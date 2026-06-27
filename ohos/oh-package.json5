@@ -1,0 +1,9 @@
+{
+  "name": "flutter_local_notifications_ohos",
+  "version": "1.0.0",
+  "description": "HarmonyOS NEXT implementation of Flutter's flutter_local_notifications plugin.",
+  "main": "index.ets",
+  "author": "ramonouyang",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

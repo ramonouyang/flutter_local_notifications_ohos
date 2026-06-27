@@ -1,0 +1,35 @@
+name: flutter_local_notifications_ohos
+description: HarmonyOS NEXT implementation of Flutter's flutter_local_notifications plugin. Display local notifications, schedule timed notifications, and manage notification lifecycle.
+version: 0.1.0
+homepage: https://github.com/ramonouyang/flutter_local_notifications_ohos
+repository: https://github.com/ramonouyang/flutter_local_notifications_ohos
+issue_tracker: https://github.com/ramonouyang/flutter_local_notifications_ohos/issues
+topics:
+  - notifications
+  - local-notifications
+  - harmonyos
+  - ohos
+  - reminder
+
+environment:
+  sdk: '>=3.4.4 <4.0.0'
+  flutter: '>=3.24.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_local_notifications_platform_interface: ^9.1.0
+  plugin_platform_interface: ^2.1.8
+  timezone: ^0.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  plugin:
+    implements: flutter_local_notifications
+    platforms:
+      ohos:
+        dartPluginClass: FlutterLocalNotificationsOhos

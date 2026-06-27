@@ -1,0 +1,15 @@
+{
+  "module": {
+    "name": "flutter_local_notifications_ohos",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "tablet"
+    ],
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.NOTIFICATION_CONTROLLER"
+      }
+    ]
+  }
+}

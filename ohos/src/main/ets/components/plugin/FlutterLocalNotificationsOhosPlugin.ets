@@ -1,6 +1,16 @@
-import { notificationManager } from '@kit.NotificationKit';
-import { reminderAgentManager } from '@kit.ReminderKit';
-import { FlutterPlugin, FlutterMethodCall, FlutterMethodResult } from '@ohos/flutter';
+import {
+  FlutterPlugin,
+  FlutterPluginBinding,
+  MethodCall,
+  MethodCallHandler,
+  MethodChannel,
+  MethodResult,
+} from '@ohos/flutter_ohos';
+import notificationManager from '@ohos.notificationManager';
+import reminderAgentManager from '@ohos.reminderAgentManager';
+
+const TAG = 'FlutterLocalNotificationsOhos';
+const CHANNEL_NAME = 'dexterous.com/flutter/local_notifications';
 
 /**
  * HarmonyOS NEXT implementation of flutter_local_notifications plugin.
@@ -8,41 +18,23 @@ import { FlutterPlugin, FlutterMethodCall, FlutterMethodResult } from '@ohos/flu
  * Provides local notification functionality using:
  * - @ohos.notificationManager for instant notifications
  * - @ohos.reminderAgentManager for scheduled/repeating notifications
- * 
- * Supported features:
- * - show(): Instant notification via notificationManager.publish()
- * - zonedSchedule(): Scheduled notification via reminderAgentManager
- * - cancel(): Cancel notification/reminder
- * - cancelAll(): Cancel all notifications and reminders
- * - pendingNotificationRequests(): List active reminders
- * - requestPermissions(): Request notification permission
- * - createNotificationChannel(): No-op (not supported on HarmonyOS)
- * 
- * Limitations:
- * - Notification click callbacks not supported (requires Ability lifecycle)
- * - Notification channels not supported (HarmonyOS concept difference)
- * - Rich text notifications not supported
- * - Custom icons not supported
  */
-export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugin {
-  private static readonly CHANNEL_NAME = 'dexterous.com/flutter/local_notifications';
-  
-  // Track scheduled reminders for cancellation
-  private reminderIds: Map<number, number> = new Map(); // notificationId -> reminderId
+export default class FlutterLocalNotificationsOhosPlugin
+  implements FlutterPlugin, MethodCallHandler {
+  private channel: MethodChannel | null = null;
+  private reminderIds: Map<number, number> = new Map();
 
-  /**
-   * Registers the plugin with the Flutter engine.
-   */
-  static registerWith(registry: any): void {
-    const channel = registry.messenger(FlutterLocalNotificationsOhosPlugin.CHANNEL_NAME);
+  static registerWith(registrar: FlutterPluginBinding): void {
     const instance = new FlutterLocalNotificationsOhosPlugin();
-    channel.setMethodCallHandler(instance.handleMethodCall.bind(instance));
+    const channel = new MethodChannel(
+      CHANNEL_NAME,
+      registrar.getMessenger()
+    );
+    channel.setMethodCallHandler(instance);
+    instance.channel = channel;
   }
 
-  /**
-   * Handles method calls from the Dart side.
-   */
-  private handleMethodCall(call: FlutterMethodCall, result: FlutterMethodResult): void {
+  onMethodCall(call: MethodCall, result: MethodResult): void {
     switch (call.method) {
       case 'initialize':
         this.handleInitialize(result);
@@ -66,7 +58,6 @@ export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugi
         this.handleRequestPermissions(result);
         break;
       case 'createNotificationChannel':
-        // No-op on HarmonyOS NEXT
         result.success(null);
         break;
       default:
@@ -75,17 +66,12 @@ export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugi
     }
   }
 
-  /**
-   * Initializes the notification service.
-   * Requests notification permissions on HarmonyOS NEXT.
-   */
-  private handleInitialize(result: FlutterMethodResult): void {
+  private handleInitialize(result: MethodResult): void {
     try {
       notificationManager.requestEnableNotification((err, data) => {
         if (err) {
           result.error('INIT_ERROR', 'Failed to initialize notifications', err.toString());
         } else {
-          // data: 0 = enabled, -1 = disabled
           result.success(data === 0);
         }
       });
@@ -94,11 +80,7 @@ export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugi
     }
   }
 
-  /**
-   * Shows an instant notification.
-   * Uses notificationManager.publish() API.
-   */
-  private handleShow(args: Record<string, Object>, result: FlutterMethodResult): void {
+  private handleShow(args: Record<string, Object>, result: MethodResult): void {
     try {
       const id = args['id'] as number;
       const title = args['title'] as string;
@@ -129,27 +111,21 @@ export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugi
     }
   }
 
-  /**
-   * Schedules a notification at a specific time.
-   * Uses reminderAgentManager for scheduled notifications.
-   */
-  private handleZonedSchedule(args: Record<string, Object>, result: FlutterMethodResult): void {
+  private handleZonedSchedule(args: Record<string, Object>, result: MethodResult): void {
     try {
       const id = args['id'] as number;
       const title = args['title'] as string;
       const body = args['body'] as string;
-      const scheduledDate = args['scheduledDate'] as number; // milliseconds
+      const scheduledDate = args['scheduledDate'] as number;
       const payload = args['payload'] as string;
       const matchDateTimeComponents = args['matchDateTimeComponents'] as number;
 
       const now = Date.now();
       const delaySeconds = Math.max(0, Math.floor((scheduledDate - now) / 1000));
 
-      // Check if this is a repeating notification
       const isRepeating = matchDateTimeComponents !== undefined && matchDateTimeComponents !== null;
 
       if (isRepeating) {
-        // Use calendar reminder for repeating notifications
         const scheduledDateObj = new Date(scheduledDate);
         const reminder: reminderAgentManager.CalendarReminderRequest = {
           reminderType: reminderAgentManager.ReminderType.REMINDER_TYPE_CALENDAR,
@@ -176,7 +152,6 @@ export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugi
           }
         });
       } else {
-        // Use timer reminder for one-time notifications
         const reminder: reminderAgentManager.TimerReminderRequest = {
           reminderType: reminderAgentManager.ReminderType.REMINDER_TYPE_TIMER,
           triggerTimeInSeconds: delaySeconds,
@@ -199,23 +174,14 @@ export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugi
     }
   }
 
-  /**
-   * Cancels a specific notification.
-   * Tries both notificationManager and reminderAgentManager.
-   */
-  private handleCancel(id: number, result: FlutterMethodResult): void {
+  private handleCancel(id: number, result: MethodResult): void {
     try {
-      // Try to cancel as notification
       notificationManager.cancel(id);
 
-      // Try to cancel as reminder
       const reminderId = this.reminderIds.get(id);
       if (reminderId !== undefined) {
         reminderAgentManager.cancelReminder(reminderId, (err) => {
           this.reminderIds.delete(id);
-          if (err) {
-            // Ignore error, notification might have already been cancelled
-          }
           result.success(null);
         });
       } else {
@@ -226,15 +192,10 @@ export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugi
     }
   }
 
-  /**
-   * Cancels all notifications and reminders.
-   */
-  private handleCancelAll(result: FlutterMethodResult): void {
+  private handleCancelAll(result: MethodResult): void {
     try {
-      // Cancel all notifications
       notificationManager.cancelAll();
 
-      // Cancel all reminders
       for (const [id, reminderId] of this.reminderIds.entries()) {
         reminderAgentManager.cancelReminder(reminderId, (err) => {
           // Ignore individual errors
@@ -248,11 +209,7 @@ export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugi
     }
   }
 
-  /**
-   * Returns list of pending notification requests.
-   * Uses reminderAgentManager.getValidReminders().
-   */
-  private handlePendingNotificationRequests(result: FlutterMethodResult): void {
+  private handlePendingNotificationRequests(result: MethodResult): void {
     try {
       reminderAgentManager.getValidReminders((err, reminders) => {
         if (err) {
@@ -260,7 +217,6 @@ export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugi
         } else {
           const pendingList: Array<Record<string, Object>> = [];
           for (const reminder of reminders) {
-            // Map reminder back to notification ID
             let notificationId = 0;
             for (const [id, reminderId] of this.reminderIds.entries()) {
               if (reminderId === reminder.reminderId) {
@@ -284,10 +240,7 @@ export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugi
     }
   }
 
-  /**
-   * Requests notification permissions.
-   */
-  private handleRequestPermissions(result: FlutterMethodResult): void {
+  private handleRequestPermissions(result: MethodResult): void {
     try {
       notificationManager.requestEnableNotification((err, data) => {
         if (err) {
@@ -301,26 +254,15 @@ export default class FlutterLocalNotificationsOhosPlugin implements FlutterPlugi
     }
   }
 
-  /**
-   * Gets repeat months based on DateTimeComponents.
-   */
   private getRepeatMonths(matchDateTimeComponents: number): number[] {
-    // DateTimeComponents.dayOfMonthAndTime = 1 (monthly)
-    // DateTimeComponents.dateAndTime = 2 (yearly)
     if (matchDateTimeComponents === 1) {
-      // Monthly: repeat every month
       return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     }
     return [];
   }
 
-  /**
-   * Gets repeat years based on DateTimeComponents.
-   */
   private getRepeatYears(matchDateTimeComponents: number): number[] {
-    // DateTimeComponents.dateAndTime = 2 (yearly)
     if (matchDateTimeComponents === 2) {
-      // Yearly: repeat every year for next 10 years
       const currentYear = new Date().getFullYear();
       const years: number[] = [];
       for (let i = 0; i < 10; i++) {

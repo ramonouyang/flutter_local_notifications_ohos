@@ -8,14 +8,15 @@ import {
 } from '@ohos/flutter_ohos';
 import notificationManager from '@ohos.notificationManager';
 import reminderAgentManager from '@ohos.reminderAgentManager';
+import hilog from '@ohos.hilog';
 
 const TAG = 'FlutterLocalNotificationsOhos';
 const CHANNEL_NAME = 'dexterous.com/flutter/local_notifications';
 
 /**
  * HarmonyOS NEXT implementation of flutter_local_notifications plugin.
- * 
- * Provides local notification functionality using:
+ *
+ * Uses:
  * - @ohos.notificationManager for instant notifications
  * - @ohos.reminderAgentManager for scheduled/repeating notifications
  */
@@ -24,14 +25,22 @@ export default class FlutterLocalNotificationsOhosPlugin
   private channel: MethodChannel | null = null;
   private reminderIds: Map<number, number> = new Map();
 
-  static registerWith(registrar: FlutterPluginBinding): void {
-    const instance = new FlutterLocalNotificationsOhosPlugin();
-    const channel = new MethodChannel(
-      CHANNEL_NAME,
-      registrar.getMessenger()
-    );
-    channel.setMethodCallHandler(instance);
-    instance.channel = channel;
+  getUniqueClassName(): string {
+    return 'FlutterLocalNotificationsOhosPlugin';
+  }
+
+  onAttachedToEngine(binding: FlutterPluginBinding): void {
+    this.channel = new MethodChannel(binding.getBinaryMessenger(), CHANNEL_NAME);
+    this.channel.setMethodCallHandler(this);
+    hilog.info(0x0001, TAG, 'Attached to engine');
+  }
+
+  onDetachedFromEngine(binding: FlutterPluginBinding): void {
+    if (this.channel != null) {
+      this.channel.setMethodCallHandler(null);
+      this.channel = null;
+    }
+    hilog.info(0x0001, TAG, 'Detached from engine');
   }
 
   onMethodCall(call: MethodCall, result: MethodResult): void {
